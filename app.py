@@ -35,13 +35,11 @@ s = requests.Session()
 final_list = []
 
 
-def get_links(num_of_records):
+def get_links():
     """
     Gets url's of all the promoters
-    Then goes to each url to scrape data
 
-    :param num_of_records: number of records to pull
-    :return:
+    :return: list of links corresponding to each Promoter and total number of records
     """
 
     # Using created session to go to RA website
@@ -67,16 +65,28 @@ def get_links(num_of_records):
         if 'id=' in str(link):              # If the href contains "id=" it points to a promoter
             links.add(link.get('href'))     # Retrieve href (url) for every <a> tag
 
+    return list(links), len(links)
+
+
+def get_init_data(prom_list, num_of_records):
+    """
+    Goes to each promoter url inside the prom_list  to scrape data
+
+    :param prom_list: List returned from get_links()
+    :param num_of_records: number of records to pull
+    :return: final_list which holds Promoter object for each promoter
+    """
+
     # Check what the user inputted for Number of Records to pull?
     if num_of_records == 0:
-        rec_to_pull = len(list(links))      # Setting number of records to length of list
+        rec_to_pull = len(prom_list)  # Setting number of records to length of list
     else:
-        rec_to_pull = num_of_records        # Setting number of records to user input
+        rec_to_pull = num_of_records  # Setting number of records to user input
 
-    # Iterating over links, running it through get_data()
+    # Iterating over prom_list then running it through get_data()
     # Creating a new Promoter class object for each promoter
     # Then appending it to final list
-    for link in list(links)[0:rec_to_pull]:
+    for link in prom_list[0:rec_to_pull]:
         final_list.append(Promoter(*get_data(link)))
 
 
@@ -84,7 +94,7 @@ def get_data(ind_link):
     """
     Gets Promoter data from the provided ind_link
 
-    :param ind_link: each link from the links list
+    :param ind_link: each link from the total promoters list
     :return: tuple of retrieved attributes
     """
 
@@ -181,6 +191,8 @@ def show_results():
 
 
 if __name__ == '__main__':
+    promoters, total_records = get_links()
+    print(f'Total Promoters Found: {total_records}')
     rec = input('Records to pull (0 means all) > ')
-    get_links(int(rec))
+    get_init_data(prom_list=promoters, num_of_records=int(rec))
     show_results()
