@@ -1,6 +1,7 @@
+from save_data import save_data
 from bs4 import BeautifulSoup
-import requests
 import pandas as pd
+import requests
 import re
 
 
@@ -30,9 +31,6 @@ headers = {
 
 # Using session() to keep cookies for ajax
 s = requests.Session()
-
-# List holding Promoter class objects
-final_list = []
 
 
 def get_links():
@@ -68,26 +66,33 @@ def get_links():
     return list(links), len(links)
 
 
-def get_init_data(prom_list, num_of_records):
+def get_init_data(promoter_list, num_of_records):
     """
     Goes to each promoter url inside the prom_list  to scrape data
 
-    :param prom_list: List returned from get_links()
+    :param promoter_list: List returned from get_links()
     :param num_of_records: number of records to pull
     :return: final_list which holds Promoter object for each promoter
     """
 
+    # List holding Promoter class objects
+    final_list = []
+
     # Check what the user inputted for Number of Records to pull?
     if num_of_records == 0:
-        rec_to_pull = len(prom_list)  # Setting number of records to length of list
+        # Setting number of records to length of list
+        rec_to_pull = len(promoter_list)
     else:
-        rec_to_pull = num_of_records  # Setting number of records to user input
+        # Setting number of records to user input
+        rec_to_pull = num_of_records
 
     # Iterating over prom_list then running it through get_data()
     # Creating a new Promoter class object for each promoter
     # Then appending it to final list
-    for link in prom_list[0:rec_to_pull]:
+    for link in promoter_list[0:rec_to_pull]:
         final_list.append(Promoter(*get_data(link)))
+
+    return final_list
 
 
 def get_data(ind_link):
@@ -164,35 +169,53 @@ def get_data(ind_link):
     return name, email, website, facebook, youtube, instagram, phone, twitter
 
 
-def show_results():
+def show_results(final_df):
     """
-    Takes the final_list and creates a dataframe with the results
+    Prints the final Data Frame from format_data() to console
 
+    :param final_df: Final Data Frame from format_data()
+    :return: Prints the Data Frame in console
     """
 
-    df = pd.DataFrame()
-
+    # Settings to print the data frame to console correctly
     desired_width = 480
     pd.set_option('display.width', desired_width)
     pd.set_option('display.max_columns', 8)
 
-    df['Name'] = [p.name for p in final_list]
-    df['Email'] = [p.email for p in final_list]
-    df['Website'] = [p.website for p in final_list]
-    df['Facebook'] = [p.facebook for p in final_list]
-    df['Youtube'] = [p.youtube for p in final_list]
-    df['Instagram'] = [p.instagram for p in final_list]
-    df['Phone'] = [p.phone for p in final_list]
-    df['Twitter'] = [p.twitter for p in final_list]
+    print(final_df)
 
-    print(df)
 
-    # TODO: Add excel functionality
+def format_data(result_list):
+    """
+    Creates a Data Frame with results from get_init_data()
+
+    :param result_list: results from get_init_data()
+    :return: Final Data Frame containing data for each Promoter
+    """
+
+    df = pd.DataFrame()
+
+    df['Name'] = [p.name for p in result_list]
+    df['Email'] = [p.email for p in result_list]
+    df['Phone'] = [p.phone for p in result_list]
+    df['Website'] = [p.website for p in result_list]
+    df['Facebook'] = [p.facebook for p in result_list]
+    df['Youtube'] = [p.youtube for p in result_list]
+    df['Instagram'] = [p.instagram for p in result_list]
+    df['Twitter'] = [p.twitter for p in result_list]
+
+    return df
 
 
 if __name__ == '__main__':
+    print('Running Program...')
     promoters, total_records = get_links()
     print(f'Total Promoters Found: {total_records}')
     rec = input('Records to pull (0 means all) > ')
-    get_init_data(prom_list=promoters, num_of_records=int(rec))
-    show_results()
+    print('Getting data...')
+    results = get_init_data(promoter_list=promoters, num_of_records=int(rec))
+    final_data_frame = format_data(results)
+    save_data('Data', 'USA', final_data_frame)
+
+    # Uncomment this to show results in console
+    # show_results(final_data_frame)
