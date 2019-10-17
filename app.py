@@ -4,6 +4,32 @@ import pandas as pd
 import requests
 import re
 
+# Url to RA website used to build links for each promoter
+base_url = 'https://www.residentadvisor.net'
+
+# Headers to mimic browser behavior
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.90 Safari/537.36'}
+
+# Using session() to keep cookies for ajax
+s = requests.Session()
+
+
+class Country:
+    """ Holds country name and link """
+
+    def __init__(self, name, link):
+        self.name = name
+        self.link = link
+
+
+class City:
+    """ Holds city/state name and link """
+
+    def __init__(self, name, link):
+        self.name = name
+        self.link = link
+
 
 class Promoter:
     """ Holds attributes for each promoter """
@@ -19,21 +45,52 @@ class Promoter:
         self.twitter = args[7]
 
 
-# Url to RA website used to build links for each promoter
-base_url = 'https://www.residentadvisor.net'
+# Got this from https://stackoverflow.com/questions/36911296/scraping-of-protected-email
+# Decoding CloudFlares email protection
+def decode_email(e):
+    de = ""
+    k = int(e[:2], 16)
 
-# Initial URL used to get list of promoters
-url = 'https://www.residentadvisor.net/promoter.aspx'
+    for i in range(2, len(e) - 1, 2):
+        de += chr(int(e[i:i + 2], 16) ^ k)
 
-# Headers to mimic browser behavior
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.90 Safari/537.36'}
-
-# Using session() to keep cookies for ajax
-s = requests.Session()
+    return de
 
 
-def get_links():
+def get_countries(url):
+    all_countries = []
+    r = s.get(url, headers=headers)
+    r.raise_for_status()
+
+    soup_country = BeautifulSoup(r.text, 'lxml')
+    items = soup_country.find_all(class_='links')
+    country_list = items[0].find_all('li')
+    for item in country_list:
+        all_countries.append(Country(name=item.text, link=item.find('a')['href']))
+        # print(item.attrs['data-id'])
+    return all_countries
+
+
+def get_cities(url):
+    all_cities = []
+    r = s.get(base_url + url, headers=headers)
+    r.raise_for_status()
+
+    soup_city = BeautifulSoup(r.text, 'lxml')
+    items = soup_city.find_all(class_='links')
+
+    # State/Region etc links have class parent
+    # Links without parent class are for each city
+    # But the parent class links will pull up all the sub-cities
+    city_list = items[1].find_all('li', class_='parent')
+
+    # Iterate over city_list to extract urls and append to all_cities
+    for item in city_list:
+        all_cities.append(City(name=item.text, link=item.find('a')['href']))
+    return all_cities
+
+
+def get_links(city_link):
     """
     Gets url's of all the promoters
 
@@ -41,7 +98,7 @@ def get_links():
     """
 
     # Using created session to go to RA website
-    r = s.get(url, headers=headers)
+    r = s.get(base_url + city_link, headers=headers)
     r.raise_for_status()
 
     # Parsing through BS4
@@ -59,16 +116,16 @@ def get_links():
     # Iterating over all list items (table)
     for item in all_items:
 
-        link = item.find('a')               # Finding all <a> tags
-        if 'id=' in str(link):              # If the href contains "id=" it points to a promoter
-            links.add(link.get('href'))     # Retrieve href (url) for every <a> tag
+        link = item.find('a')  # Finding all <a> tags
+        if 'id=' in str(link):  # If the href contains "id=" it points to a promoter
+            links.add(link.get('href'))  # Retrieve href (url) for every <a> tag
 
     return list(links), len(links)
 
 
 def get_init_data(promoter_list, num_of_records):
     """
-    Goes to each promoter url inside the prom_list  to scrape data
+    Goes to each promoter url inside the promoter_list to scrape data
 
     :param promoter_list: List returned from get_links()
     :param num_of_records: number of records to pull
@@ -86,7 +143,7 @@ def get_init_data(promoter_list, num_of_records):
         # Setting number of records to user input
         rec_to_pull = num_of_records
 
-    # Iterating over prom_list then running it through get_data()
+    # Iterating over promoter_list then running it through get_data()
     # Creating a new Promoter class object for each promoter
     # Then appending it to final list
     for link in promoter_list[0:rec_to_pull]:
@@ -95,21 +152,21 @@ def get_init_data(promoter_list, num_of_records):
     return final_list
 
 
-def get_data(ind_link):
+def get_data(promoter_link):
     """
     Gets Promoter data from the provided ind_link
 
-    :param ind_link: each link from the total promoters list
+    :param promoter_link: each link from the total promoters list
     :return: tuple of retrieved attributes
     """
 
     # Creating the promoter url
-    r2 = s.get(base_url + ind_link)
+    r2 = s.get(base_url + promoter_link)
     r2.raise_for_status()
-    soup2 = BeautifulSoup(r2.text, 'lxml')
+    soup_promoter = BeautifulSoup(r2.text, 'lxml')
 
     # Getting the name of the Promoter
-    name = soup2.select_one('h1').text
+    name = soup_promoter.select_one('h1').text
 
     # Setting default values
     email = 'N/A'
@@ -123,10 +180,11 @@ def get_data(ind_link):
     try:
         # Looking for the section that has text "On the internet"
         # Then getting it's parent which contains all contact info
-        social = soup2.select_one('div:contains("On the internet")').parent
+        social = soup_promoter.select_one('div:contains("On the internet")').parent
         try:
             email_class = social.select_one('a:contains("Email")')
-            email = email_class.get('href').split(':')[1]
+            # CloudFlare hosted websites encode emails for protection
+            email = decode_email(email_class.get('href').split('#')[1])
         except:
             pass
         try:
@@ -159,7 +217,7 @@ def get_data(ind_link):
 
     try:
         # Getting the phone number <div> inside a <li>
-        phone_number = soup2.select_one("li div:contains('Phone')").text
+        phone_number = soup_promoter.select_one("li div:contains('Phone')").text
 
         # Running a regex search for selecting the phone number
         phone = re.findall(r'\d{10}', phone_number)[0]
@@ -167,22 +225,6 @@ def get_data(ind_link):
         pass
 
     return name, email, website, facebook, youtube, instagram, phone, twitter
-
-
-def show_results(final_df):
-    """
-    Prints the final Data Frame from format_data() to console
-
-    :param final_df: Final Data Frame from format_data()
-    :return: Prints the Data Frame in console
-    """
-
-    # Settings to print the data frame to console correctly
-    desired_width = 480
-    pd.set_option('display.width', desired_width)
-    pd.set_option('display.max_columns', 8)
-
-    print(final_df)
 
 
 def format_data(result_list):
@@ -207,15 +249,40 @@ def format_data(result_list):
     return df
 
 
+def show_results(final_df):
+    """
+    Prints the final Data Frame from format_data() to console
+
+    :param final_df: Final Data Frame from format_data()
+    :return: Prints the Data Frame in console
+    """
+
+    # Settings to print the data frame to console correctly
+    desired_width = 480
+    pd.set_option('display.width', desired_width)
+    pd.set_option('display.max_columns', 8)
+
+    print(final_df)
+
+
 if __name__ == '__main__':
     print('Running Program...')
-    promoters, total_records = get_links()
-    print(f'Total Promoters Found: {total_records}')
-    rec = input('Records to pull (0 means all) > ')
-    print('Getting data...')
-    results = get_init_data(promoter_list=promoters, num_of_records=int(rec))
-    final_data_frame = format_data(results)
-    save_data('Data', 'USA', final_data_frame)
+    countries = get_countries('https://www.residentadvisor.net/promoters.aspx')
+    for country in countries[0:1]:
+        country_data = []
+        print('-' * 40)
+        print(f'Getting data from {country.name}...')
+        print('-' * 40)
+        cities = get_cities(url=country.link)
+        for city in cities:
+            promoters, total_records = get_links(city_link=city.link)
+            print(f'Total Promoters Found in {city.name}: {total_records}')
+            # rec = input('Records to pull (0 means all) > ')
+            country_data.extend(get_init_data(promoter_list=promoters, num_of_records=int(0)))
+        final_data_frame = format_data(country_data)
+        print(f'Saving data for {country.name}...')
+        print('-' * 40)
+        save_data('Data', country.name, final_data_frame)
 
     # Uncomment this to show results in console
     # show_results(final_data_frame)
