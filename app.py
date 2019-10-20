@@ -115,9 +115,8 @@ def get_links(city_link):
 
     # Iterating over all list items (table)
     for item in all_items:
-
-        link = item.find('a')  # Finding all <a> tags
-        if 'id=' in str(link):  # If the href contains "id=" it points to a promoter
+        link = item.find('a')            # Finding all <a> tags
+        if 'id=' in str(link):           # If the href contains "id=" it points to a promoter
             links.add(link.get('href'))  # Retrieve href (url) for every <a> tag
 
     return list(links), len(links)
@@ -147,9 +146,44 @@ def get_init_data(promoter_list, num_of_records):
     # Creating a new Promoter class object for each promoter
     # Then appending it to final list
     for link in promoter_list[0:rec_to_pull]:
-        final_list.append(Promoter(*get_data(link)))
+        if check_if_active(link):
+            final_list.append(Promoter(*get_data(link)))
+        else:
+            pass
 
     return final_list
+
+
+def check_if_active(promoter_link):
+    """
+    Checks to see if promoter is active by looking at existence of events
+    in it's events page
+
+    :param promoter_link: link for each promoter with id
+    :return: boolean if promoter has events or not
+    """
+
+    # Checking if promoter is active by looking at number of events
+    parameters = {'show': 'events'}
+
+    # show=events parameters takes us to promoter events page
+    r3 = s.get(base_url + promoter_link, params=parameters)
+
+    # Parse data
+    soup_events = BeautifulSoup(r3.text, 'lxml')
+
+    # Find div that contains events
+    div_for_events = soup_events.find(id='divArchiveEvents')
+
+    # Pull up all table <li> tags inside above div
+    # These are all events found
+    events = div_for_events.find_all('li')
+
+    # If the list 'events' is 0, then promoter has no events
+    if len(events) > 0:
+        return True
+    else:
+        return False
 
 
 def get_data(promoter_link):
@@ -268,12 +302,14 @@ def show_results(final_df):
 if __name__ == '__main__':
     print('Running Program...')
     countries = get_countries('https://www.residentadvisor.net/promoters.aspx')
-    for country in countries[0:1]:
+
+    for country in countries:
         country_data = []
-        print('-' * 40)
-        print(f'Getting data from {country.name}...')
-        print('-' * 40)
+        print('-' * 45)
+        print(f'Getting data from {country.name}')
+        print('-' * 45)
         cities = get_cities(url=country.link)
+
         for city in cities:
             promoters, total_records = get_links(city_link=city.link)
             print(f'Total Promoters Found in {city.name}: {total_records}')
@@ -281,8 +317,8 @@ if __name__ == '__main__':
             country_data.extend(get_init_data(promoter_list=promoters, num_of_records=int(0)))
         final_data_frame = format_data(country_data)
         print(f'Saving data for {country.name}...')
-        print('-' * 40)
+        print('-' * 45)
         save_data('Data', country.name, final_data_frame)
 
     # Uncomment this to show results in console
-    # show_results(final_data_frame)
+        show_results(final_data_frame)
